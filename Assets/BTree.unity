@@ -1920,6 +1920,10 @@ PrefabInstance:
       propertyPath: diamond
       value: 
       objectReference: {fileID: 1550492363}
+    - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
+      propertyPath: backdoor
+      value: 
+      objectReference: {fileID: 919599686}
     - target: {fileID: 7423567203501390115, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
       propertyPath: m_RootOrder
       value: 3

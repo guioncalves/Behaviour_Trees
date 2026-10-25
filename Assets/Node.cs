@@ -16,6 +16,11 @@ public class Node : MonoBehaviour
         name = n;
     }
 
+    public virtual Status Process()
+    {
+        return Status.SUCCESS;
+    }
+
     public void AddChild(Node n)
     {
         children.Add(n);
