@@ -1,28 +1,53 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 
-public class Node : MonoBehaviour
+using System.Collections.Generic;
+
+public class Node
 {
-    public enum Status { SUCCESS, RUNNING, FAILURE };
-    public Status status;
+    // Possíveis resultados de uma ação.
+    public enum Status
+    {
+        SUCCESS,
+        RUNNING,
+        FAILURE
+    }
+
+    // Estado atual do nó.
+    public Status status = Status.RUNNING;
+
+    // Lista de nós filhos.
     public List<Node> children = new List<Node>();
+
+    // Índice do filho que está a ser executado.
     public int currentChild = 0;
+
+    // Nome do nó.
     public string name;
 
-    public Node() { }
+    // Construtor vazio.
+    public Node()
+    {
+        name = "Node";
+    }
+
+    // Construtor com nome.
     public Node(string n)
     {
         name = n;
     }
 
+    // Método executado pela Behaviour Tree.
     public virtual Status Process()
     {
-        return Status.SUCCESS;
+        status = Status.SUCCESS;
+        return status;
     }
 
+    // Adicionar um nó filho.
     public void AddChild(Node n)
     {
-        children.Add(n);
+        if (n != null)
+        {
+            children.Add(n);
+        }
     }
 }

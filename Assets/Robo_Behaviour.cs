@@ -11,25 +11,30 @@ public class Robo_Behaviour : MonoBehaviour
     [Header("Objetivos")]
     public GameObject diamond;
     public GameObject van;
-    public GameObject backdoor;
+
+    [Header("Portas")]
+    public GameObject FrontDoor;
+    public GameObject BackDoor;
+
+    [Header("Pontos opcionais da BackDoor")]
+    public Transform BackDoorOutside;
+    public Transform BackDoorInside;
 
     [Header("Movimento")]
-    public float arrivalDistance = 1f;
+    public float arrivalDistance = 0.5f;
 
     private bool hasDiamond = false;
     private bool missionComplete = false;
+
+    private bool reachedFrontDoor = false;
     private bool reachedBackDoor = false;
+    private bool reachedBackDoorOutside = false;
 
-    // Estados da missão.
-    private enum MissionState
-    {
-        GoingToBackDoor,
-        GoingToDiamond,
-        GoingToVan,
-        Complete
-    }
+    private bool destinationSet = false;
+    private Vector3 currentDestination;
 
-    private MissionState missionState;
+    private bool doorChosen = false;
+    private GameObject chosenDoor;
 
     void Start()
     {
@@ -37,31 +42,29 @@ public class Robo_Behaviour : MonoBehaviour
 
         agent = GetComponent<NavMeshAgent>();
 
-        // Verificar se todos os objetivos existem.
+        // Verificar referências obrigatórias.
         if (diamond == null ||
             van == null ||
-            backdoor == null)
+            FrontDoor == null ||
+            BackDoor == null)
         {
             Debug.LogError(
-                "Atribui o Diamond, a Van e a Backdoor no Inspector!"
+                "Atribui Diamond, Van, FrontDoor e BackDoor no Inspector!"
             );
 
             enabled = false;
             return;
         }
 
-        // Verificar se o robô está no NavMesh.
         if (!agent.isOnNavMesh)
         {
             Debug.LogError(
-                "O robo nao esta no NavMesh!"
+                "O robo nao esta sobre o NavMesh!"
             );
 
             enabled = false;
             return;
         }
-
-        agent.isStopped = false;
 
         if (agent.speed <= 0f)
         {
@@ -73,33 +76,35 @@ public class Robo_Behaviour : MonoBehaviour
             return;
         }
 
+        agent.isStopped = false;
+
         // =====================================
         // CRIAR A BEHAVIOUR TREE
         // =====================================
 
         tree = new Behaviour_Tree();
 
-        Node steal = new Node("Steal Something");
+        Sequence steal = new Sequence("Steal Something");
 
-        Leaf goToBackDoor = new Leaf(
-            "Go To Door",
-            GoToBackDoor
+        // Escolher uma porta.
+        Leaf chooseDoor = new Leaf(
+            "Choose Door",
+            ChooseDoor
         );
 
+        // Recolher o diamante.
         Leaf goToDiamond = new Leaf(
             "Go To Diamond",
             GoToDiamond
         );
 
+        // Regressar à carrinha.
         Leaf goToVan = new Leaf(
             "Go To Van",
             GoToVan
         );
 
-        // Ordem da missão:
-        // Porta -> Diamante -> Carrinha
-
-        steal.AddChild(goToBackDoor);
+        steal.AddChild(chooseDoor);
         steal.AddChild(goToDiamond);
         steal.AddChild(goToVan);
 
@@ -108,17 +113,6 @@ public class Robo_Behaviour : MonoBehaviour
         tree.PrintTree();
 
         Debug.Log("Behaviour Tree criada!");
-
-        // =====================================
-        // PRIMEIRO DESTINO: PORTA
-        // =====================================
-
-        missionState = MissionState.GoingToBackDoor;
-
-        if (!DefineDestination(backdoor.transform.position))
-        {
-            enabled = false;
-        }
     }
 
     void Update()
@@ -126,160 +120,282 @@ public class Robo_Behaviour : MonoBehaviour
         if (missionComplete || !agent.isOnNavMesh)
             return;
 
-        // Esperar que o NavMesh calcule o percurso.
-        if (agent.pathPending)
-            return;
+        Node.Status result = tree.Process();
 
-        // Verificar se existe um caminho válido.
-        if (agent.hasPath &&
-            agent.pathStatus != NavMeshPathStatus.PathComplete)
+        if (result == Node.Status.SUCCESS)
         {
-            Debug.LogError(
-                "O robo nao tem um caminho completo!"
-            );
-
-            enabled = false;
-            return;
-        }
-
-        // Enquanto não chegar, continuar a mover-se.
-        if (!ReachedDestination())
-            return;
-
-        // =====================================
-        // FASE 1 - CHEGOU À PORTA
-        // =====================================
-
-        if (missionState == MissionState.GoingToBackDoor)
-        {
-            reachedBackDoor = true;
-
-            Debug.Log("O robo chegou a porta traseira!");
-
-            // Próximo objetivo: diamante.
-            missionState = MissionState.GoingToDiamond;
-
-            if (!DefineDestination(diamond.transform.position))
-            {
-                enabled = false;
-            }
-        }
-
-        // =====================================
-        // FASE 2 - CHEGOU AO DIAMANTE
-        // =====================================
-
-        else if (missionState == MissionState.GoingToDiamond)
-        {
-            hasDiamond = true;
-
-            Debug.Log("O robo chegou ao cristal!");
-
-            // Recolher o diamante.
-            diamond.SetActive(false);
-
-            // Próximo objetivo: carrinha.
-            missionState = MissionState.GoingToVan;
-
-            if (!DefineDestination(van.transform.position))
-            {
-                enabled = false;
-            }
-        }
-
-        // =====================================
-        // FASE 3 - CHEGOU À CARRINHA
-        // =====================================
-
-        else if (missionState == MissionState.GoingToVan)
-        {
-            missionState = MissionState.Complete;
             missionComplete = true;
 
             agent.ResetPath();
 
             Debug.Log(
-                "MISSAO CONCLUIDA! O robo chegou a carrinha."
+                "MISSAO CONCLUIDA! O ladrao chegou a carrinha!"
             );
+        }
+        else if (result == Node.Status.FAILURE)
+        {
+            Debug.LogError("A missao falhou!");
+
+            agent.ResetPath();
+
+            enabled = false;
         }
     }
 
     // =====================================
-    // DEFINIR DESTINO
+    // MOVIMENTO
     // =====================================
 
-    bool DefineDestination(Vector3 destination)
+    public Node.Status GoToLocation(Vector3 destination)
     {
         if (!agent.isOnNavMesh)
-            return false;
+            return Node.Status.FAILURE;
 
-        agent.isStopped = false;
-
-        bool sucesso = agent.SetDestination(destination);
-
-        if (sucesso)
+        // Definir destino apenas quando necessário.
+        if (!destinationSet ||
+            Vector3.Distance(
+                currentDestination,
+                destination
+            ) > 0.1f)
         {
-            Debug.Log(
-                "Novo destino: " + destination
-            );
+            agent.isStopped = false;
+
+            bool success = agent.SetDestination(destination);
+
+            if (!success)
+            {
+                Debug.LogError(
+                    "Nao foi possivel definir o destino: " +
+                    destination
+                );
+
+                return Node.Status.FAILURE;
+            }
+
+            currentDestination = destination;
+            destinationSet = true;
+
+            Debug.Log("Novo destino: " + destination);
+
+            return Node.Status.RUNNING;
         }
-        else
+
+        // Esperar pelo cálculo do percurso.
+        if (agent.pathPending)
+            return Node.Status.RUNNING;
+
+        // Verificar se existe um caminho completo.
+        if (agent.pathStatus == NavMeshPathStatus.PathInvalid ||
+            agent.pathStatus == NavMeshPathStatus.PathPartial)
         {
             Debug.LogError(
-                "Nao foi possivel definir o destino: "
-                + destination
+                "O NavMesh nao encontrou um caminho completo!"
             );
+
+            return Node.Status.FAILURE;
         }
 
-        return sucesso;
-    }
-
-    // =====================================
-    // VERIFICAR SE CHEGOU AO DESTINO
-    // =====================================
-
-    bool ReachedDestination()
-    {
-        if (agent.pathPending)
-            return false;
-
-        if (!agent.hasPath)
-            return false;
-
-        if (agent.pathStatus != NavMeshPathStatus.PathComplete)
-            return false;
-
         if (float.IsInfinity(agent.remainingDistance))
-            return false;
+            return Node.Status.RUNNING;
 
-        return agent.remainingDistance <= Mathf.Max(
+        float threshold = Mathf.Max(
             arrivalDistance,
             agent.stoppingDistance
         );
+
+        // Verificar chegada ao destino.
+        if (agent.remainingDistance <= threshold &&
+            (!agent.hasPath ||
+             agent.velocity.sqrMagnitude < 0.01f))
+        {
+            destinationSet = false;
+
+            agent.ResetPath();
+
+            return Node.Status.SUCCESS;
+        }
+
+        return Node.Status.RUNNING;
     }
 
     // =====================================
-    // AÇÕES DA BEHAVIOUR TREE
+    // ESCOLHER PORTA
+    // =====================================
+
+    public Node.Status ChooseDoor()
+    {
+        // Escolher a porta apenas uma vez.
+        if (!doorChosen)
+        {
+            Lock frontLock = FrontDoor.GetComponent<Lock>();
+            Lock backLock = BackDoor.GetComponent<Lock>();
+
+            if (frontLock == null || backLock == null)
+            {
+                Debug.LogError(
+                    "FrontDoor ou BackDoor nao tem componente Lock!"
+                );
+
+                return Node.Status.FAILURE;
+            }
+
+            if (!frontLock.isLocked)
+            {
+                chosenDoor = FrontDoor;
+
+                Debug.Log(
+                    "FrontDoor desbloqueada. Usar FrontDoor."
+                );
+            }
+            else if (!backLock.isLocked)
+            {
+                chosenDoor = BackDoor;
+
+                Debug.Log(
+                    "FrontDoor bloqueada. Usar BackDoor."
+                );
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "As duas portas estao bloqueadas!"
+                );
+
+                return Node.Status.FAILURE;
+            }
+
+            doorChosen = true;
+        }
+
+        // Executar a ação da porta escolhida.
+        if (chosenDoor == FrontDoor)
+        {
+            return GoToFrontDoor();
+        }
+
+        if (chosenDoor == BackDoor)
+        {
+            return GoToBackDoor();
+        }
+
+        return Node.Status.FAILURE;
+    }
+
+    // =====================================
+    // FRONTDOOR
+    // =====================================
+
+    public Node.Status GoToFrontDoor()
+    {
+        if (reachedFrontDoor)
+            return Node.Status.SUCCESS;
+
+        Node.Status result = GoToLocation(
+            FrontDoor.transform.position
+        );
+
+        if (result == Node.Status.SUCCESS)
+        {
+            reachedFrontDoor = true;
+
+            Debug.Log(
+                "O ladrao chegou a FrontDoor!"
+            );
+        }
+
+        return result;
+    }
+
+    // =====================================
+    // BACKDOOR
     // =====================================
 
     public Node.Status GoToBackDoor()
     {
-        return reachedBackDoor
-            ? Node.Status.SUCCESS
-            : Node.Status.RUNNING;
+        if (reachedBackDoor)
+            return Node.Status.SUCCESS;
+
+        // Primeiro, ir ao exterior da BackDoor.
+        if (BackDoorOutside != null && !reachedBackDoorOutside)
+        {
+            Node.Status outsideResult = GoToLocation(
+                BackDoorOutside.position
+            );
+
+            if (outsideResult != Node.Status.SUCCESS)
+                return outsideResult;
+
+            reachedBackDoorOutside = true;
+
+            Debug.Log(
+                "O ladrao chegou ao exterior da BackDoor!"
+            );
+        }
+
+        // Depois, entrar pela BackDoor.
+        Vector3 destination;
+
+        if (BackDoorInside != null)
+        {
+            destination = BackDoorInside.position;
+        }
+        else
+        {
+            destination = BackDoor.transform.position;
+        }
+
+        Node.Status result = GoToLocation(destination);
+
+        if (result == Node.Status.SUCCESS)
+        {
+            reachedBackDoor = true;
+
+            Debug.Log(
+                "O ladrao chegou a BackDoor!"
+            );
+        }
+
+        return result;
     }
+
+    // =====================================
+    // DIAMANTE
+    // =====================================
 
     public Node.Status GoToDiamond()
     {
-        return hasDiamond
-            ? Node.Status.SUCCESS
-            : Node.Status.RUNNING;
+        if (hasDiamond)
+            return Node.Status.SUCCESS;
+
+        Node.Status result = GoToLocation(
+            diamond.transform.position
+        );
+
+        if (result == Node.Status.SUCCESS)
+        {
+            hasDiamond = true;
+
+            diamond.SetActive(false);
+
+            Debug.Log(
+                "O ladrao recolheu o diamante!"
+            );
+        }
+
+        return result;
     }
+
+    // =====================================
+    // CARRINHA
+    // =====================================
 
     public Node.Status GoToVan()
     {
-        return missionComplete
-            ? Node.Status.SUCCESS
-            : Node.Status.RUNNING;
+        if (!hasDiamond)
+            return Node.Status.FAILURE;
+
+        return GoToLocation(
+            van.transform.position
+        );
     }
 }

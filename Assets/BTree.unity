@@ -1921,9 +1921,25 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1550492363}
     - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
+      propertyPath: BackDoor
+      value: 
+      objectReference: {fileID: 919599686}
+    - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
       propertyPath: backdoor
       value: 
       objectReference: {fileID: 919599686}
+    - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
+      propertyPath: FrontDoor
+      value: 
+      objectReference: {fileID: 1791870521}
+    - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
+      propertyPath: BackDoorInside
+      value: 
+      objectReference: {fileID: 1791870525}
+    - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
+      propertyPath: BackDoorOutside
+      value: 
+      objectReference: {fileID: 919599690}
     - target: {fileID: 7423567203501390115, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
       propertyPath: m_RootOrder
       value: 3
@@ -1989,7 +2005,7 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.5
-  m_Speed: 3.5
+  m_Speed: 10.44
   m_Acceleration: 8
   avoidancePriority: 50
   m_AngularSpeed: 120
@@ -2601,6 +2617,7 @@ GameObject:
   - component: {fileID: 919599688}
   - component: {fileID: 919599687}
   - component: {fileID: 919599691}
+  - component: {fileID: 919599692}
   m_Layer: 0
   m_Name: BackDoor
   m_TagString: Untagged
@@ -2693,7 +2710,7 @@ NavMeshObstacle:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 919599686}
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1
   m_Extents: {x: 0.5, y: 0.5, z: 0.5}
@@ -2702,6 +2719,19 @@ NavMeshObstacle:
   m_CarveOnlyStationary: 1
   m_Center: {x: 0, y: 0, z: 0}
   m_TimeToStationary: 0.5
+--- !u!114 &919599692
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 919599686}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5be675dfd1bbcaa46b200955f46e5323, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isLocked: 0
 --- !u!1 &925317490
 GameObject:
   m_ObjectHideFlags: 0
@@ -5269,6 +5299,7 @@ GameObject:
   - component: {fileID: 1791870523}
   - component: {fileID: 1791870522}
   - component: {fileID: 1791870526}
+  - component: {fileID: 1791870527}
   m_Layer: 0
   m_Name: FrontDoor
   m_TagString: Untagged
@@ -5361,7 +5392,7 @@ NavMeshObstacle:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1791870521}
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1
   m_Extents: {x: 0.5, y: 0.5, z: 0.5}
@@ -5370,6 +5401,19 @@ NavMeshObstacle:
   m_CarveOnlyStationary: 1
   m_Center: {x: 0, y: 0, z: 0}
   m_TimeToStationary: 0.5
+--- !u!114 &1791870527
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1791870521}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5be675dfd1bbcaa46b200955f46e5323, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isLocked: 1
 --- !u!4 &1796479289 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: a5028766c6c2448878d200bb33de1f59, type: 3}
