@@ -16,25 +16,17 @@ public class Robo_Behaviour : MonoBehaviour
     public GameObject FrontDoor;
     public GameObject BackDoor;
 
-    [Header("Pontos opcionais da BackDoor")]
-    public Transform BackDoorOutside;
-    public Transform BackDoorInside;
-
     [Header("Movimento")]
-    public float arrivalDistance = 0.5f;
+    public float arrivalDistance = 1.5f;
 
     private bool hasDiamond = false;
     private bool missionComplete = false;
 
-    private bool reachedFrontDoor = false;
-    private bool reachedBackDoor = false;
-    private bool reachedBackDoorOutside = false;
+    private bool doorChecked = false;
+    private bool useBackDoor = false;
 
     private bool destinationSet = false;
     private Vector3 currentDestination;
-
-    private bool doorChosen = false;
-    private GameObject chosenDoor;
 
     void Start()
     {
@@ -42,71 +34,46 @@ public class Robo_Behaviour : MonoBehaviour
 
         agent = GetComponent<NavMeshAgent>();
 
-        // Verificar referências obrigatórias.
-        if (diamond == null ||
-            van == null ||
-            FrontDoor == null ||
-            BackDoor == null)
+        if (diamond == null || van == null ||
+            FrontDoor == null || BackDoor == null)
         {
-            Debug.LogError(
-                "Atribui Diamond, Van, FrontDoor e BackDoor no Inspector!"
-            );
-
+            Debug.LogError("Faltam referencias no Inspector!");
             enabled = false;
             return;
         }
 
         if (!agent.isOnNavMesh)
         {
-            Debug.LogError(
-                "O robo nao esta sobre o NavMesh!"
-            );
-
+            Debug.LogError("O robo nao esta no NavMesh!");
             enabled = false;
             return;
         }
 
-        if (agent.speed <= 0f)
+        // Guardar o obstaculo da porta da frente.
+        NavMeshObstacle frontObstacle =
+            FrontDoor.GetComponent<NavMeshObstacle>();
+
+        if (frontObstacle == null)
         {
             Debug.LogError(
-                "A velocidade do NavMeshAgent deve ser maior que zero!"
+                "FrontDoor precisa de um NavMeshObstacle!"
             );
 
             enabled = false;
             return;
         }
 
-        agent.isStopped = false;
+        // Inicialmente, a porta nao bloqueia o NavMesh.
+        frontObstacle.carving = false;
 
-        // =====================================
-        // CRIAR A BEHAVIOUR TREE
-        // =====================================
-
+        // Criar Behaviour Tree.
         tree = new Behaviour_Tree();
 
         Sequence steal = new Sequence("Steal Something");
 
-        // Escolher uma porta.
-        Leaf chooseDoor = new Leaf(
-            "Choose Door",
-            ChooseDoor
-        );
-
-        // Recolher o diamante.
-        Leaf goToDiamond = new Leaf(
-            "Go To Diamond",
-            GoToDiamond
-        );
-
-        // Regressar à carrinha.
-        Leaf goToVan = new Leaf(
-            "Go To Van",
-            GoToVan
-        );
-
-        steal.AddChild(chooseDoor);
-        steal.AddChild(goToDiamond);
-        steal.AddChild(goToVan);
+        steal.AddChild(new Leaf("Choose Door", ChooseDoor));
+        steal.AddChild(new Leaf("Go To Diamond", GoToDiamond));
+        steal.AddChild(new Leaf("Go To Van", GoToVan));
 
         tree.AddChild(steal);
 
@@ -117,7 +84,7 @@ public class Robo_Behaviour : MonoBehaviour
 
     void Update()
     {
-        if (missionComplete || !agent.isOnNavMesh)
+        if (missionComplete)
             return;
 
         Node.Status result = tree.Process();
@@ -125,19 +92,15 @@ public class Robo_Behaviour : MonoBehaviour
         if (result == Node.Status.SUCCESS)
         {
             missionComplete = true;
-
             agent.ResetPath();
 
-            Debug.Log(
-                "MISSAO CONCLUIDA! O ladrao chegou a carrinha!"
-            );
+            Debug.Log("MISSAO CONCLUIDA!");
         }
         else if (result == Node.Status.FAILURE)
         {
-            Debug.LogError("A missao falhou!");
-
             agent.ResetPath();
 
+            Debug.LogError("A missao falhou!");
             enabled = false;
         }
     }
@@ -151,22 +114,15 @@ public class Robo_Behaviour : MonoBehaviour
         if (!agent.isOnNavMesh)
             return Node.Status.FAILURE;
 
-        // Definir destino apenas quando necessário.
         if (!destinationSet ||
-            Vector3.Distance(
-                currentDestination,
-                destination
-            ) > 0.1f)
+            Vector3.Distance(currentDestination, destination) > 0.1f)
         {
             agent.isStopped = false;
 
-            bool success = agent.SetDestination(destination);
-
-            if (!success)
+            if (!agent.SetDestination(destination))
             {
                 Debug.LogError(
-                    "Nao foi possivel definir o destino: " +
-                    destination
+                    "Nao foi possivel definir destino: " + destination
                 );
 
                 return Node.Status.FAILURE;
@@ -180,36 +136,27 @@ public class Robo_Behaviour : MonoBehaviour
             return Node.Status.RUNNING;
         }
 
-        // Esperar pelo cálculo do percurso.
         if (agent.pathPending)
             return Node.Status.RUNNING;
 
-        // Verificar se existe um caminho completo.
         if (agent.pathStatus == NavMeshPathStatus.PathInvalid ||
             agent.pathStatus == NavMeshPathStatus.PathPartial)
         {
-            Debug.LogError(
-                "O NavMesh nao encontrou um caminho completo!"
-            );
-
+            Debug.LogError("Caminho invalido para: " + destination);
             return Node.Status.FAILURE;
         }
 
         if (float.IsInfinity(agent.remainingDistance))
             return Node.Status.RUNNING;
 
-        float threshold = Mathf.Max(
+        float distance = Mathf.Max(
             arrivalDistance,
             agent.stoppingDistance
         );
 
-        // Verificar chegada ao destino.
-        if (agent.remainingDistance <= threshold &&
-            (!agent.hasPath ||
-             agent.velocity.sqrMagnitude < 0.01f))
+        if (agent.remainingDistance <= distance)
         {
             destinationSet = false;
-
             agent.ResetPath();
 
             return Node.Status.SUCCESS;
@@ -224,61 +171,48 @@ public class Robo_Behaviour : MonoBehaviour
 
     public Node.Status ChooseDoor()
     {
-        // Escolher a porta apenas uma vez.
-        if (!doorChosen)
+        if (!doorChecked)
         {
+            // Primeiro, ir a porta da frente.
+            Node.Status result = GoToFrontDoor();
+
+            if (result != Node.Status.SUCCESS)
+                return result;
+
             Lock frontLock = FrontDoor.GetComponent<Lock>();
-            Lock backLock = BackDoor.GetComponent<Lock>();
 
-            if (frontLock == null || backLock == null)
+            if (frontLock == null)
             {
-                Debug.LogError(
-                    "FrontDoor ou BackDoor nao tem componente Lock!"
-                );
-
+                Debug.LogError("FrontDoor nao tem Lock!");
                 return Node.Status.FAILURE;
             }
 
-            if (!frontLock.isLocked)
+            doorChecked = true;
+
+            if (frontLock.isLocked)
             {
-                chosenDoor = FrontDoor;
+                useBackDoor = true;
+
+                // Ativar Carve quando chega a porta trancada.
+                NavMeshObstacle obstacle =
+                    FrontDoor.GetComponent<NavMeshObstacle>();
+
+                obstacle.carving = true;
 
                 Debug.Log(
-                    "FrontDoor desbloqueada. Usar FrontDoor."
-                );
-            }
-            else if (!backLock.isLocked)
-            {
-                chosenDoor = BackDoor;
-
-                Debug.Log(
-                    "FrontDoor bloqueada. Usar BackDoor."
+                    "FrontDoor trancada! Carve ativado. Ir para BackDoor."
                 );
             }
             else
             {
-                Debug.LogWarning(
-                    "As duas portas estao bloqueadas!"
-                );
-
-                return Node.Status.FAILURE;
+                Debug.Log("FrontDoor aberta!");
             }
-
-            doorChosen = true;
         }
 
-        // Executar a ação da porta escolhida.
-        if (chosenDoor == FrontDoor)
-        {
-            return GoToFrontDoor();
-        }
+        if (!useBackDoor)
+            return Node.Status.SUCCESS;
 
-        if (chosenDoor == BackDoor)
-        {
-            return GoToBackDoor();
-        }
-
-        return Node.Status.FAILURE;
+        return GoToBackDoor();
     }
 
     // =====================================
@@ -287,76 +221,31 @@ public class Robo_Behaviour : MonoBehaviour
 
     public Node.Status GoToFrontDoor()
     {
-        if (reachedFrontDoor)
-            return Node.Status.SUCCESS;
-
-        Node.Status result = GoToLocation(
-            FrontDoor.transform.position
-        );
-
-        if (result == Node.Status.SUCCESS)
-        {
-            reachedFrontDoor = true;
-
-            Debug.Log(
-                "O ladrao chegou a FrontDoor!"
-            );
-        }
-
-        return result;
+        return GoToLocation(FrontDoor.transform.position);
     }
 
     // =====================================
     // BACKDOOR
     // =====================================
 
+
     public Node.Status GoToBackDoor()
     {
-        if (reachedBackDoor)
-            return Node.Status.SUCCESS;
+        // Aproximar-se da porta traseira.
+        Node.Status result = GoToLocation(BackDoor.transform.position);
 
-        // Primeiro, ir ao exterior da BackDoor.
-        if (BackDoorOutside != null && !reachedBackDoorOutside)
-        {
-            Node.Status outsideResult = GoToLocation(
-                BackDoorOutside.position
-            );
+        if (result != Node.Status.SUCCESS)
+            return result;
 
-            if (outsideResult != Node.Status.SUCCESS)
-                return outsideResult;
+        // Chegou a porta: destruir a porta traseira.
+        Debug.Log("O ladrao destruiu a BackDoor!");
 
-            reachedBackDoorOutside = true;
+        Destroy(BackDoor);
 
-            Debug.Log(
-                "O ladrao chegou ao exterior da BackDoor!"
-            );
-        }
-
-        // Depois, entrar pela BackDoor.
-        Vector3 destination;
-
-        if (BackDoorInside != null)
-        {
-            destination = BackDoorInside.position;
-        }
-        else
-        {
-            destination = BackDoor.transform.position;
-        }
-
-        Node.Status result = GoToLocation(destination);
-
-        if (result == Node.Status.SUCCESS)
-        {
-            reachedBackDoor = true;
-
-            Debug.Log(
-                "O ladrao chegou a BackDoor!"
-            );
-        }
-
-        return result;
+        // A porta foi destruida, pode continuar para o cristal.
+        return Node.Status.SUCCESS;
     }
+
 
     // =====================================
     // DIAMANTE
@@ -374,12 +263,9 @@ public class Robo_Behaviour : MonoBehaviour
         if (result == Node.Status.SUCCESS)
         {
             hasDiamond = true;
-
             diamond.SetActive(false);
 
-            Debug.Log(
-                "O ladrao recolheu o diamante!"
-            );
+            Debug.Log("O ladrao roubou o diamante!");
         }
 
         return result;
@@ -394,8 +280,6 @@ public class Robo_Behaviour : MonoBehaviour
         if (!hasDiamond)
             return Node.Status.FAILURE;
 
-        return GoToLocation(
-            van.transform.position
-        );
+        return GoToLocation(van.transform.position);
     }
 }
