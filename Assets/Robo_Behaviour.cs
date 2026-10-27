@@ -256,16 +256,19 @@ public class Robo_Behaviour : MonoBehaviour
         if (hasDiamond)
             return Node.Status.SUCCESS;
 
-        Node.Status result = GoToLocation(
-            diamond.transform.position
-        );
+        Node.Status result = GoToLocation(diamond.transform.position);
 
         if (result == Node.Status.SUCCESS)
         {
             hasDiamond = true;
-            diamond.SetActive(false);
 
-            Debug.Log("O ladrao roubou o diamante!");
+            // Fazer o cristal acompanhar o ladrao.
+            diamond.transform.SetParent(transform);
+
+            // Colocar o cristal a frente e acima do ladrao.
+            diamond.transform.localPosition = new Vector3(0f, 1.5f, 0.5f);
+
+            Debug.Log("O ladrao apanhou o cristal e esta a transporta-lo!");
         }
 
         return result;

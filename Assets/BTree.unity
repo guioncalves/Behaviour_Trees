@@ -1941,6 +1941,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 919599690}
     - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
+      propertyPath: arrivalDistance
+      value: 0.9
+      objectReference: {fileID: 0}
+    - target: {fileID: 6014231136351260556, guid: b79d0b13355dc8f44b7956db61a82656, type: 3}
       propertyPath: FrontDoorOutside
       value: 
       objectReference: {fileID: 1900011652}
@@ -2009,7 +2013,7 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.5
-  m_Speed: 10.44
+  m_Speed: 14.11
   m_Acceleration: 8
   avoidancePriority: 50
   m_AngularSpeed: 120
