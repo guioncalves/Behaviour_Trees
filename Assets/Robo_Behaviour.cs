@@ -19,14 +19,23 @@ public class Robo_Behaviour : MonoBehaviour
     [Header("Movimento")]
     public float arrivalDistance = 1.5f;
 
+    [Header("Recompensa")]
+    public int money = 0;
+    public int crystalValue = 300;
+
     private bool hasDiamond = false;
     private bool missionComplete = false;
 
     private bool doorChecked = false;
     private bool useBackDoor = false;
+    private bool backDoorDestroyed = false;
 
     private bool destinationSet = false;
     private Vector3 currentDestination;
+
+    // Posicao final pretendida na carrinha.
+    private readonly Vector3 vanPosition =
+        new Vector3(25.85727f, 1.36f, -11f);
 
     void Start()
     {
@@ -34,8 +43,10 @@ public class Robo_Behaviour : MonoBehaviour
 
         agent = GetComponent<NavMeshAgent>();
 
-        if (diamond == null || van == null ||
-            FrontDoor == null || BackDoor == null)
+        if (diamond == null ||
+            van == null ||
+            FrontDoor == null ||
+            BackDoor == null)
         {
             Debug.LogError("Faltam referencias no Inspector!");
             enabled = false;
@@ -49,7 +60,6 @@ public class Robo_Behaviour : MonoBehaviour
             return;
         }
 
-        // Guardar o obstaculo da porta da frente.
         NavMeshObstacle frontObstacle =
             FrontDoor.GetComponent<NavMeshObstacle>();
 
@@ -63,17 +73,29 @@ public class Robo_Behaviour : MonoBehaviour
             return;
         }
 
-        // Inicialmente, a porta nao bloqueia o NavMesh.
+        // Inicialmente, nao recortar o NavMesh.
+        frontObstacle.carveOnlyStationary = false;
         frontObstacle.carving = false;
 
-        // Criar Behaviour Tree.
+        // =====================================
+        // BEHAVIOUR TREE
+        // =====================================
+
         tree = new Behaviour_Tree();
 
         Sequence steal = new Sequence("Steal Something");
 
-        steal.AddChild(new Leaf("Choose Door", ChooseDoor));
-        steal.AddChild(new Leaf("Go To Diamond", GoToDiamond));
-        steal.AddChild(new Leaf("Go To Van", GoToVan));
+        steal.AddChild(
+            new Leaf("Choose Door", ChooseDoor)
+        );
+
+        steal.AddChild(
+            new Leaf("Go To Diamond", GoToDiamond)
+        );
+
+        steal.AddChild(
+            new Leaf("Go To Van", GoToVan)
+        );
 
         tree.AddChild(steal);
 
@@ -92,15 +114,18 @@ public class Robo_Behaviour : MonoBehaviour
         if (result == Node.Status.SUCCESS)
         {
             missionComplete = true;
+
             agent.ResetPath();
+            agent.isStopped = true;
 
             Debug.Log("MISSAO CONCLUIDA!");
         }
         else if (result == Node.Status.FAILURE)
         {
             agent.ResetPath();
+            agent.isStopped = true;
 
-            Debug.LogError("A missao falhou!");
+            Debug.LogError("O roubo falhou!");
             enabled = false;
         }
     }
@@ -109,20 +134,32 @@ public class Robo_Behaviour : MonoBehaviour
     // MOVIMENTO
     // =====================================
 
-    public Node.Status GoToLocation(Vector3 destination)
+    public Node.Status GoToLocation(
+        Vector3 destination,
+        float stoppingDistance = -1f)
     {
         if (!agent.isOnNavMesh)
             return Node.Status.FAILURE;
 
+        float distance = stoppingDistance >= 0f
+            ? stoppingDistance
+            : arrivalDistance;
+
+        agent.stoppingDistance = distance;
+
         if (!destinationSet ||
-            Vector3.Distance(currentDestination, destination) > 0.1f)
+            Vector3.Distance(
+                currentDestination,
+                destination
+            ) > 0.1f)
         {
             agent.isStopped = false;
 
             if (!agent.SetDestination(destination))
             {
                 Debug.LogError(
-                    "Nao foi possivel definir destino: " + destination
+                    "Nao foi possivel definir destino: " +
+                    destination
                 );
 
                 return Node.Status.FAILURE;
@@ -142,17 +179,15 @@ public class Robo_Behaviour : MonoBehaviour
         if (agent.pathStatus == NavMeshPathStatus.PathInvalid ||
             agent.pathStatus == NavMeshPathStatus.PathPartial)
         {
-            Debug.LogError("Caminho invalido para: " + destination);
+            Debug.LogError(
+                "Caminho invalido para: " + destination
+            );
+
             return Node.Status.FAILURE;
         }
 
         if (float.IsInfinity(agent.remainingDistance))
             return Node.Status.RUNNING;
-
-        float distance = Mathf.Max(
-            arrivalDistance,
-            agent.stoppingDistance
-        );
 
         if (agent.remainingDistance <= distance)
         {
@@ -173,13 +208,13 @@ public class Robo_Behaviour : MonoBehaviour
     {
         if (!doorChecked)
         {
-            // Primeiro, ir a porta da frente.
             Node.Status result = GoToFrontDoor();
 
             if (result != Node.Status.SUCCESS)
                 return result;
 
-            Lock frontLock = FrontDoor.GetComponent<Lock>();
+            Lock frontLock =
+                FrontDoor.GetComponent<Lock>();
 
             if (frontLock == null)
             {
@@ -193,14 +228,14 @@ public class Robo_Behaviour : MonoBehaviour
             {
                 useBackDoor = true;
 
-                // Ativar Carve quando chega a porta trancada.
                 NavMeshObstacle obstacle =
                     FrontDoor.GetComponent<NavMeshObstacle>();
 
+                obstacle.carveOnlyStationary = false;
                 obstacle.carving = true;
 
                 Debug.Log(
-                    "FrontDoor trancada! Carve ativado. Ir para BackDoor."
+                    "FrontDoor trancada! Carve ativado."
                 );
             }
             else
@@ -221,34 +256,38 @@ public class Robo_Behaviour : MonoBehaviour
 
     public Node.Status GoToFrontDoor()
     {
-        return GoToLocation(FrontDoor.transform.position);
+        return GoToLocation(
+            FrontDoor.transform.position
+        );
     }
 
     // =====================================
     // BACKDOOR
     // =====================================
 
-
     public Node.Status GoToBackDoor()
     {
-        // Aproximar-se da porta traseira.
-        Node.Status result = GoToLocation(BackDoor.transform.position);
+        if (backDoorDestroyed)
+            return Node.Status.SUCCESS;
+
+        Node.Status result = GoToLocation(
+            BackDoor.transform.position
+        );
 
         if (result != Node.Status.SUCCESS)
             return result;
 
-        // Chegou a porta: destruir a porta traseira.
-        Debug.Log("O ladrao destruiu a BackDoor!");
+        backDoorDestroyed = true;
 
         Destroy(BackDoor);
 
-        // A porta foi destruida, pode continuar para o cristal.
+        Debug.Log("O ladrao destruiu a BackDoor!");
+
         return Node.Status.SUCCESS;
     }
 
-
     // =====================================
-    // DIAMANTE
+    // ROUBAR CRISTAL
     // =====================================
 
     public Node.Status GoToDiamond()
@@ -256,26 +295,38 @@ public class Robo_Behaviour : MonoBehaviour
         if (hasDiamond)
             return Node.Status.SUCCESS;
 
-        Node.Status result = GoToLocation(diamond.transform.position);
+        Node.Status result = GoToLocation(
+            diamond.transform.position
+        );
 
         if (result == Node.Status.SUCCESS)
         {
             hasDiamond = true;
 
-            // Fazer o cristal acompanhar o ladrao.
+            Rigidbody rb =
+                diamond.GetComponent<Rigidbody>();
+
+            if (rb != null)
+            {
+                rb.isKinematic = true;
+                rb.useGravity = false;
+            }
+
             diamond.transform.SetParent(transform);
 
-            // Colocar o cristal a frente e acima do ladrao.
-            diamond.transform.localPosition = new Vector3(0f, 1.5f, 0.5f);
+            diamond.transform.localPosition =
+                new Vector3(0f, 1.5f, 0.5f);
 
-            Debug.Log("O ladrao apanhou o cristal e esta a transporta-lo!");
+            Debug.Log(
+                "O ladrao apanhou o cristal!"
+            );
         }
 
         return result;
     }
 
     // =====================================
-    // CARRINHA
+    // FUGIR PARA A CARRINHA
     // =====================================
 
     public Node.Status GoToVan()
@@ -283,6 +334,49 @@ public class Robo_Behaviour : MonoBehaviour
         if (!hasDiamond)
             return Node.Status.FAILURE;
 
-        return GoToLocation(van.transform.position);
+        // Procurar um ponto navegavel perto da carrinha.
+        NavMeshHit hit;
+
+        if (!NavMesh.SamplePosition(
+            vanPosition,
+            out hit,
+            3f,
+            NavMesh.AllAreas))
+        {
+            Debug.LogError(
+                "Nao existe NavMesh perto da carrinha!"
+            );
+
+            return Node.Status.FAILURE;
+        }
+
+        Node.Status result = GoToLocation(
+            hit.position,
+            0.1f
+        );
+
+        if (result != Node.Status.SUCCESS)
+            return result;
+
+        // Parar a navegacao antes do posicionamento final.
+        agent.ResetPath();
+        agent.isStopped = true;
+
+        // Colocar o ladrao exatamente na posicao pretendida.
+        // Se estiver fora do NavMesh, suspender o NavMeshAgent.
+        agent.enabled = false;
+        transform.position = vanPosition;
+
+        // Esconder o cristal ao entrar na carrinha.
+        diamond.SetActive(false);
+
+        // Receber a recompensa.
+        money += crystalValue;
+
+        Debug.Log("O ladrao entrou na carrinha!");
+        Debug.Log("Dinheiro ganho: " + crystalValue);
+        Debug.Log("Dinheiro total: " + money);
+
+        return Node.Status.SUCCESS;
     }
 }
